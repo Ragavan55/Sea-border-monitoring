@@ -1,0 +1,84 @@
+{% extends 'devices/base.html' %}
+{% block scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+<script>
+(function() {
+    const boatIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/3144/3144456.png',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -16]
+    });
+
+    const map = L.map('map').setView([20, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const markers = [];
+    const popups = [];
+
+    function updateShipLocations() {
+        fetch('/get_all_ship_locations/')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Clear existing markers and popups
+                markers.forEach(marker => map.removeLayer(marker));
+                markers.length = 0;
+                popups.length = 0;
+
+                if (data.locations && data.locations.length > 0) {
+                    data.locations.forEach(location => {
+                        if (location.lat !== null && location.lon !== null) {
+                            const marker = L.marker([location.lat, location.lon], {
+                                icon: boatIcon
+                            }).addTo(map);
+
+                            const popupContent = `
+                                <div class="ship-popup">
+                                    <h6>${location.ship_name}</h6>
+                                    <p><strong>Owner:</strong> ${location.owner_name}</p>
+                                    <p><strong>Latitude:</strong> ${location.lat.toFixed(4)}</p>
+                                    <p><strong>Longitude:</strong> ${location.lon.toFixed(4)}</p>
+                                    <p><strong>Last update:</strong> ${location.time || 'N/A'}</p>
+                                </div>
+                            `;
+
+                            const popup = L.popup({ autoClose: false, closeOnClick: false })
+                                .setContent(popupContent);
+
+                            marker.on('mouseover', function() {
+                                this.bindPopup(popup).openPopup();
+                            });
+                            marker.on('mouseout', function() {
+                                this.closePopup();
+                            });
+
+                            markers.push(marker);
+                            popups.push(popup);
+                        }
+                    });
+                } else {
+                    console.warn('No ship locations found in the API response.');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching ship data:', error);
+            });
+    }
+
+    // Initial update and periodic refresh
+    updateShipLocations();
+    setInterval(updateShipLocations, 15000);
+})();
+</script>
+{% endblock scripts %}
+{% block content %}
+<div id="map" style="height: 500px;"></div>
+{% endblock %}

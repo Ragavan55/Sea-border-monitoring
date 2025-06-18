@@ -1,0 +1,81 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "Territorial Waters",
+                "color": "#00FF00" 
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [75, 20],
+                        [76, 20],
+                        [76, 21],
+                        [75, 21],
+                        [75, 20]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "Contiguous Zone",
+                "color": "#FFFF00"  
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [74, 19],
+                        [77, 19],
+                        [77, 22],
+                        [74, 22],
+                        [74, 19]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "Exclusive Economic Zone (EEZ)",
+                "color": "#FFA500"  
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [73, 18],
+                        [78, 18],
+                        [78, 23],
+                        [73, 23],
+                        [73, 18]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "name": "High Seas",
+                "color": "#FF0000"  
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [72, 17],
+                        [79, 17],
+                        [79, 24],
+                        [72, 24],
+                        [72, 17]
+                    ]
+                ]
+            }
+        }
+    ]
+}

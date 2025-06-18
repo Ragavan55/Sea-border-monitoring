@@ -1,0 +1,211 @@
+{% extends 'devices/base.html' %}
+{% block title %}Ship Search{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <form method="get" class="form-inline">
+                <div class="input-group w-100">
+                    <input type="text" name="ship_name" class="form-control"
+                           placeholder="Enter ship name" value="{{ ship_name }}">
+                    <button type="submit" class="btn btn-primary">Search</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div id="map"></div>
+    {% if location %}
+    <div class="mt-4 card" id="ship-info">
+        <div class="card-body">
+            <h4>Ship Information</h4>
+            <p><strong>Name:</strong> {{ location.ship_name }}</p>
+            <p><strong>Owner:</strong> {{ location.owner }}</p>
+            <p><strong>Coordinates:</strong> <span id="coord-text">{{ location.lat|floatformat:4 }}, {{ location.lon|floatformat:4 }}</span></p>
+            <p><strong>Last Update:</strong> <span id="update-time">{{ location.time }}</span></p>
+            <p><strong>Status:</strong> 
+                <span id="status" class="{% if location.status == 'Inside' %}text-success{% else %}text-danger{% endif %}">
+                    {{ location.status }}
+                </span>
+            </p>
+            <p><strong>Last Exit Time:</strong> {{ location.exit_time }}</p>
+            <p><strong>Last Return Time:</strong> {{ location.return_time }}</p>
+        </div>
+    </div>
+    {% endif %}
+    <audio id="alert-audio" loop>
+        <source src="devices/ttsmaker-file-2025-4-25-9-6-21.mp3" type="audio/mpeg">
+        Your browser does not support the audio element.
+      </audio>
+    
+</div>
+{% endblock content %}
+
+{% block scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script>
+(function() {
+    // Configuration
+    const UPDATE_INTERVAL = 5000;  // 5 seconds
+    const DEFAULT_VIEW = [20, 0];
+    const DEFAULT_ZOOM = 2;
+    const MARKER_ZOOM = 10;
+    
+    
+    // Initialize Map
+    const map = L.map('map').setView(DEFAULT_VIEW, DEFAULT_ZOOM);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    
+    // Boat Icon Configuration
+    const boatIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/3144/3144456.png',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -16]
+    });
+    
+    // Marker Management
+    let marker = null;
+    let popup = null;
+    let audio = new Audio('devices/static/devices/ttsmaker-file-2025-4-25-9-6-21.mp3');  // Path to the sound file
+    audio.loop = true;  // Loop the sound
+    
+    // Define the border polygon (example coordinates)
+    const borderPolygon = L.polygon([
+        [20, 0],
+        [20, 10],
+        [30, 10],
+        [30, 0]
+    ]).addTo(map);
+    
+    // Function to check if a point is inside the polygon
+    function isPointInsidePolygon(lat, lon, polygon) {
+        const point = turf.point([lon, lat]);
+        const poly = turf.polygon([polygon.getLatLngs()[0].map(latLng => [latLng.lng, latLng.lat])]);
+        return turf.booleanPointInPolygon(point, poly);
+    }
+    
+    // Initialize Marker if location exists
+    {% if location %}
+        const initialLat = {{ location.lat|default:"10.0" }};
+        const initialLon = {{ location.lon|default:"78.0" }};
+        
+        marker = L.marker([initialLat, initialLon], { icon: boatIcon }).addTo(map);
+        map.setView([initialLat, initialLon], MARKER_ZOOM);
+        
+        popup = L.popup({ autoClose: false, closeOnClick: false }).setContent(
+            `<div class="ship-popup">
+                <h6>${{ location.ship_name }}</h6>
+                <p><strong>Owner:</strong> {{ location.owner }}</p>
+                <p><strong>Latitude:</strong> <span id="popup-lat"> ${initialLat.toFixed(4)} </span></p>
+                <p><strong>Longitude:</strong> <span id="popup-lon"> ${initialLon.toFixed(4)} </span></p>
+            </div>`
+        );
+        marker.bindPopup(popup).openPopup();
+        
+        // Check if initial location is inside the border
+        {% comment %} if (!isPointInsidePolygon(initialLat, initialLon, borderPolygon)) {
+            audio.play();
+        } {% endcomment %}
+    {% endif %}
+    
+    // ThingSpeak Integration
+    const channelId = '{{ location.channel_id }}';
+    const apiKey = '{{ location.read_api_key }}';
+    const latitudeField = 'field1';
+    const longitudeField = 'field2';
+    
+    async function fetchFromThingSpeak() {
+        try {
+            const response = await fetch(
+                `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${apiKey}&results=1`
+            );
+            
+            if (!response.ok) throw new Error('Network response was not ok');
+            
+            const data = await response.json();
+            
+            if (!data.feeds || data.feeds.length === 0) {
+                throw new Error('No feed data available');
+            }
+            const feed = data.feeds[0];
+            const newLat = parseFloat(feed[latitudeField]);
+            const newLon = parseFloat(feed[longitudeField]);
+            if (isNaN(newLat) || isNaN(newLon)) {
+                throw new Error('Invalid coordinate data');
+            }
+            // Update marker and view
+            marker.setLatLng([newLat, newLon]);
+            map.setView([newLat, newLon], map.getZoom());
+            // Update DOM elements
+            document.getElementById('popup-lat').textContent = newLat.toFixed(4);
+            document.getElementById('popup-lon').textContent = newLon.toFixed(4);
+            document.getElementById('coord-text').textContent = `${newLat.toFixed(4)}, ${newLon.toFixed(4)}`;
+            document.getElementById('update-time').textContent = new Date(feed.created_at).toLocaleString();
+            document.getElementById('status').textContent = feed.field3 || 'N/A';  // Update status
+            document.getElementById('exit-time').textContent = feed.field4 || 'N/A';  // Update exit_time
+            document.getElementById('return-time').textContent = feed.field5 || 'N/A';  // Update return_time
+// Play or pause audio based on field3 (status)
+if (feed.field3 && feed.field3.trim().toLowerCase() === 'inside') {
+    if (!audio.paused) {
+        audio.pause();
+        audio.currentTime = 0;
+    }
+    document.getElementById('status').textContent = 'Inside';
+    document.getElementById('status').className = 'text-success';
+} else if (feed.field3 && feed.field3.trim().toLowerCase() === 'outside') {
+    if (audio.paused) {
+        audio.play().catch(err => console.error("Audio playback error:", err));
+    }
+    document.getElementById('status').textContent = 'Outside';
+    document.getElementById('status').className = 'text-danger';
+}
+
+
+           
+           
+        } catch (error) {
+            console.error("Error fetching data:", error);
+            // Implement error handling UI here if needed
+        }
+    }
+   
+   
+    
+    
+    
+    // Start updates if location exists
+    {% if location %}
+        // Initial fetch
+        fetchFromThingSpeak();
+        // Set up regular updates
+        const updateInterval = setInterval(fetchFromThingSpeak, UPDATE_INTERVAL);
+        // Cleanup on page navigation
+        window.addEventListener('beforeunload', () => clearInterval(updateInterval));
+    {% endif %}
+})();
+</script>
+<style>
+#map {
+    height: 500px;
+    margin-bottom: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.ship-popup {
+    max-width: 250px;
+    font-size: 0.9rem;
+}
+.ship-popup h6 {
+    color: #0d6efd;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+#ship-info {
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+</style>
+{% endblock scripts %}
